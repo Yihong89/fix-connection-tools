@@ -59,6 +59,25 @@ Inbound messages appear with a blue **IN** tag, outbound with a green **OUT** ta
 java -jar build/libs/fix-connection-tools-1.0.0.jar
 ```
 
+## Local testing with the included FIX acceptor
+
+The project includes a test FIX acceptor server so you can try the full flow without an external FIX server.
+
+**Terminal 1 — Start the test FIX acceptor:**
+```bash
+./gradlew runAcceptor
+```
+Listens on port `9878` by default. Set `FIX_PORT=9879` to change.
+
+**Terminal 2 — Start the webapp relay:**
+```bash
+./gradlew bootRun
+```
+
+**In your browser**, open http://localhost:3000 and connect to `127.0.0.1:9878`.
+
+Once connected, click **Logon (35=A)** to start a FIX session. The acceptor will respond with a Logon and send a sample Execution Report for AAPL.
+
 ## Configuration
 
 | Environment Variable | Default | Description |

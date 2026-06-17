@@ -24,3 +24,15 @@ tasks.named('bootJar') {
     archiveBaseName = 'fix-connection-tools'
     archiveVersion = '1.0.0'
 }
+
+tasks.register('runAcceptor', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.fixtools.FixAcceptorServer'
+    description = 'Run the FIX acceptor test server on port 9878'
+}
+
+tasks.register('runWebapp', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.fixtools.FixToolsApplication'
+    description = 'Run the FIX webapp relay server on port 3000'
+}
