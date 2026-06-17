@@ -16,8 +16,8 @@ Your FIX Acceptor
 
 ## Requirements
 
-- Java 11+
-- Gradle (optional — the included `gradlew` wrapper handles it)
+- Java 21
+- Gradle 9+ (optional — the included `gradlew` wrapper handles it)
 
 ## Quick Start
 
