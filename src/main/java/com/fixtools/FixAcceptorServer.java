@@ -1,26 +1,22 @@
 package com.fixtools;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Simple FIX acceptor test server.
  * Run with: ./gradlew runAcceptor
- * Listens on port 9878 by default. Set PORT env var to change.
+ * Listens on port 9878 by default. Set FIX_PORT env var to change.
  */
 public class FixAcceptorServer {
 
-    private static final AtomicInteger msgSeqNum = new AtomicInteger(1);
     private static final SimpleDateFormat UTC_FMT = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
     static { UTC_FMT.setTimeZone(TimeZone.getTimeZone("UTC")); }
 
@@ -28,7 +24,6 @@ public class FixAcceptorServer {
         int port = Integer.parseInt(System.getenv().getOrDefault("FIX_PORT", "9878"));
         System.out.println("=== FIX Acceptor Test Server ===");
         System.out.println("Listening on port " + port);
-        System.out.println("Connect with the webapp and send a Logon (35=A)");
         System.out.println();
 
         try (ServerSocket server = new ServerSocket(port)) {
@@ -47,6 +42,7 @@ public class FixAcceptorServer {
         private final Map<String, String> sessionState = new HashMap<>();
         private int seqNum = 1;
         private volatile boolean running = true;
+        private final byte SOH = 0x01;
 
         Session(Socket socket) {
             this.socket = socket;
@@ -56,32 +52,18 @@ public class FixAcceptorServer {
         public void run() {
             try {
                 socket.setTcpNoDelay(true);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                InputStream in = socket.getInputStream();
                 OutputStream out = socket.getOutputStream();
 
+                StringBuilder buf = new StringBuilder();
+
                 while (running) {
-                    char[] buf = new char[4096];
-                    int n = reader.read(buf);
+                    byte[] bytes = new byte[4096];
+                    int n = in.read(bytes);
                     if (n == -1) break;
 
-                    String data = new String(buf, 0, n);
-                    String[] msgs = data.split("", -1);
-
-                    StringBuilder partial = new StringBuilder();
-                    for (String raw : msgs) {
-                        if (raw.isEmpty()) continue;
-                        // reassemble if last chunk was incomplete
-                        if (partial.length() > 0) {
-                            partial.append('').append(raw);
-                            raw = partial.toString();
-                            partial.setLength(0);
-                        }
-                        if (!raw.contains("35=")) {
-                            partial.append(raw);
-                            continue;
-                        }
-                        handleMessage(raw, out);
-                    }
+                    buf.append(new String(bytes, 0, n, "UTF-8"));
+                    processBuffer(buf, out);
                 }
             } catch (Exception e) {
                 if (running) System.out.println("[error] " + e.getMessage());
@@ -92,15 +74,37 @@ public class FixAcceptorServer {
             }
         }
 
+        private void processBuffer(StringBuilder buf, OutputStream out) throws Exception {
+            String data = buf.toString();
+            // A complete FIX message starts with "8=FIX." and ends with SOH followed by "10="
+            int start = data.indexOf("8=FIX.");
+            while (start != -1) {
+                int end = data.indexOf("10=", start + 6);
+                if (end == -1) break; // incomplete message, wait for more data
+
+                // Find the end of the checksum value (next SOH after "10=")
+                int sot = data.indexOf(SOH, end);
+                if (sot == -1) break; // incomplete checksum, wait for more data
+
+                String msg = data.substring(start, sot + 1);
+                handleMessage(msg, out);
+
+                // Move past this message
+                data = data.substring(sot + 1);
+                start = data.indexOf("8=FIX.");
+            }
+            buf.setLength(0);
+            buf.append(data);
+        }
+
         private void handleMessage(String msg, OutputStream out) throws Exception {
             Map<String, String> fields = parseFix(msg);
             String msgType = fields.get("35");
             String sender = fields.get("49");
             String target = fields.get("56");
-            System.out.println("[recv] 35=" + msgType + " " + summarize(fields));
+            System.out.println("[recv] 35=" + msgType + " sender=" + sender + " target=" + target);
 
             if ("A".equals(msgType)) {
-                // Logon response
                 sessionState.put("sender", sender);
                 sessionState.put("target", target);
                 sendFix(out, Map.of(
@@ -112,34 +116,33 @@ public class FixAcceptorServer {
                     "98", "0",
                     "108", "30"
                 ));
-                System.out.println("[send] Logon response (35=A)");
+                System.out.println("[send] Logon acknowledge");
 
-                // Send a test Execution Report after a short delay
-                Thread.sleep(500);
-                Map<String, String> execReport = new HashMap<>();
-                execReport.put("35", "8");
-                execReport.put("49", target);
-                execReport.put("56", sender);
-                execReport.put("34", String.valueOf(seqNum++));
-                execReport.put("52", utcNow());
-                execReport.put("17", "EXEC-" + System.currentTimeMillis());
-                execReport.put("20", "0");
-                execReport.put("39", "0");
-                execReport.put("37", "ORD-001");
-                execReport.put("11", "CLIENT-REF-001");
-                execReport.put("54", "1");
-                execReport.put("38", "100");
-                execReport.put("55", "AAPL");
-                execReport.put("44", "150.25");
-                execReport.put("32", "0");
-                execReport.put("31", "0.00");
-                execReport.put("150", "0");
-                execReport.put("151", "100");
-                sendFix(out, execReport);
+                // Send a test Execution Report
+                Thread.sleep(300);
+                Map<String, String> er = new HashMap<>();
+                er.put("35", "8");
+                er.put("49", target);
+                er.put("56", sender);
+                er.put("34", String.valueOf(seqNum++));
+                er.put("52", utcNow());
+                er.put("17", "EXEC-" + System.currentTimeMillis());
+                er.put("20", "0");
+                er.put("39", "0");
+                er.put("37", "ORD-001");
+                er.put("11", "CLIENT-REF-001");
+                er.put("54", "1");
+                er.put("38", "100");
+                er.put("55", "AAPL");
+                er.put("44", "150.25");
+                er.put("32", "0");
+                er.put("31", "0.00");
+                er.put("150", "0");
+                er.put("151", "100");
+                sendFix(out, er);
                 System.out.println("[send] Execution Report (35=8)");
 
             } else if ("0".equals(msgType)) {
-                // Heartbeat response
                 sendFix(out, Map.of(
                     "35", "0",
                     "49", sessionState.getOrDefault("target", "SERVER"),
@@ -149,7 +152,6 @@ public class FixAcceptorServer {
                 ));
 
             } else if ("5".equals(msgType)) {
-                // Logout response
                 sendFix(out, Map.of(
                     "35", "5",
                     "49", sessionState.getOrDefault("target", "SERVER"),
@@ -158,34 +160,29 @@ public class FixAcceptorServer {
                     "52", utcNow(),
                     "58", "Logout acknowledged"
                 ));
-                System.out.println("[send] Logout response (35=5)");
+                System.out.println("[send] Logout acknowledge");
                 running = false;
 
             } else {
-                System.out.println("[info] Unhandled message type: " + msgType);
+                System.out.println("[info] Unhandled 35=" + msgType);
             }
         }
 
         private void sendFix(OutputStream out, Map<String, String> fields) throws Exception {
             StringBuilder sb = new StringBuilder();
-            sb.append("8=FIX.4.4");
+            sb.append("8=FIX.4.4").append((char) SOH);
             for (Map.Entry<String, String> e : fields.entrySet()) {
-                sb.append(e.getKey()).append("=").append(e.getValue()).append('');
+                sb.append(e.getKey()).append("=").append(e.getValue()).append((char) SOH);
             }
-            // BodyLength (9) and Checksum (10) would be calculated in real FIX
-            sb.append("10=000");
-            String raw = sb.toString();
-            out.write(raw.getBytes("UTF-8"));
+            sb.append("10=000").append((char) SOH);
+            out.write(sb.toString().getBytes("UTF-8"));
             out.flush();
         }
 
         private Map<String, String> parseFix(String raw) {
             Map<String, String> map = new HashMap<>();
-            // Strip BeginString (8=...) and checksum (10=...) for simplicity
-            String[] parts = raw.split("");
-            int bodyLen = parts.length - 1; // skip trailing empty from split
-            for (int i = 0; i < parts.length; i++) {
-                String p = parts[i].trim();
+            String[] parts = raw.split(String.valueOf((char) SOH));
+            for (String p : parts) {
                 if (p.isEmpty()) continue;
                 int eq = p.indexOf('=');
                 if (eq > 0) {
@@ -193,16 +190,6 @@ public class FixAcceptorServer {
                 }
             }
             return map;
-        }
-
-        private String summarize(Map<String, String> f) {
-            if ("8".equals(f.get("35"))) {
-                return "ExecReport ord=" + f.get("11") + " sym=" + f.get("55");
-            }
-            if ("A".equals(f.get("35"))) {
-                return "sender=" + f.get("49") + " target=" + f.get("56");
-            }
-            return "";
         }
     }
 
