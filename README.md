@@ -2,23 +2,27 @@
 
 A browser-based tool for connecting to a FIX (Financial Information Exchange) acceptor and viewing live FIX messages in real time.
 
-Since browsers cannot open raw TCP sockets, this project includes a small relay server that translates WebSocket ↔ TCP, bridging the browser to your FIX server.
+Since browsers cannot open raw TCP sockets, this project includes a small relay server (Spring Boot) that translates WebSocket ↔ TCP, bridging the browser to your FIX server.
 
 ## Architecture
 
 ```
 Browser (HTML/JS)
       ↕ WebSocket (port 3000)
-relay-server.js
+Spring Boot Relay Server
       ↕ raw TCP
 Your FIX Acceptor
 ```
 
+## Requirements
+
+- Java 11+
+- Gradle (optional — the included `gradlew` wrapper handles it)
+
 ## Quick Start
 
 ```bash
-npm install
-npm start
+./gradlew bootRun
 ```
 
 Open **http://localhost:3000** in your browser.
@@ -48,25 +52,31 @@ Or type any FIX message into the input bar and press **Enter**. Use `|` (pipe) a
 
 Inbound messages appear with a blue **IN** tag, outbound with a green **OUT** tag. Each entry is timestamped.
 
+## Build a standalone JAR
+
+```bash
+./gradlew bootJar
+java -jar build/libs/fix-connection-tools-1.0.0.jar
+```
+
 ## Configuration
 
 | Environment Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Port for the relay server (both WebSocket and static files) |
 
-## Run as a background server
+## Project Structure
 
-```bash
-PORT=8080 npm start &
 ```
+src/main/java/com/fixtools/
+├── FixToolsApplication.java       # Spring Boot entry point
+├── config/WebSocketConfig.java    # WebSocket endpoint registration
+└── handler/RelayWebSocketHandler.java  # WebSocket ↔ TCP relay logic
 
-Then access the webapp at `http://localhost:8080`.
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `relay-server.js` | WebSocket-to-TCP relay + static file server |
-| `public/index.html` | Webapp layout |
-| `public/style.css` | Dark theme styling |
-| `public/app.js` | WebSocket client, FIX message handling, UI logic |
+src/main/resources/
+├── application.yml                # Server configuration
+└── static/                        # Frontend files
+    ├── index.html                 # Webapp layout
+    ├── style.css                  # Dark theme styling
+    └── app.js                     # WebSocket client & FIX message handling
+```

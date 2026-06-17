@@ -1,1 +1,4 @@
-node_modules/
+build/
+.gradle/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

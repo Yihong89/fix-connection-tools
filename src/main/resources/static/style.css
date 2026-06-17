@@ -28,7 +28,6 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 }
 .logo { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
 .logo .dim { color: var(--dim); font-weight: 400; }
-.section { }
 .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--dim); margin-bottom: 8px; }
 .form-group { margin-bottom: 8px; }
 .form-group label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 2px; }

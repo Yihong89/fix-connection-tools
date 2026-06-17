@@ -1,5 +1,5 @@
 const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const relayUrl = `${wsProto}//${location.host}`;
+const relayUrl = `${wsProto}//${location.host}/relay`;
 
 let ws = null;
 let connected = false;
@@ -142,7 +142,7 @@ function fillTemplate(tpl) {
     .replace(/YYYYMMDD-HH:MM:SS/g, utc)
     .replace(/NN/g, seqNum)
     .replace(/XXX/g, '000001')
-    .replace(/\|/g, '');
+    .replace(/\|/g, '\x01');
 }
 
 /* ---- Event listeners ---- */
@@ -160,7 +160,7 @@ msgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage
 function sendMessage() {
   const text = msgInput.value.trim();
   if (!text || !connected || !ws) return;
-  const sep = text.includes('') ? text : text.replace(/\|/g, '');
+  const sep = text.includes('\x01') ? text : text.replace(/\|/g, '\x01');
   ws.send(JSON.stringify({ type: 'send', content: sep }));
   msgInput.value = '';
 }
